@@ -355,13 +355,27 @@ static Arbol crear_huffman(int* frecuencias) {
 	return arbolHuffman;
 }
 
-
+static void escribir_arbol(BitStream bs, Arbol T) {
+    if (arbol_izq(T) == NULL && arbol_der(T) == NULL) {
+        keyvaluepair* kv = (keyvaluepair*)arbol_valor(T);
+        PutBit(bs, 1); // hoja
+        PutByte(bs, kv->c); // carácter
+    }
+    else {
+        PutBit(bs, 0); // nodo interno
+        escribir_arbol(bs, arbol_izq(T));
+        escribir_arbol(bs, arbol_der(T));
+    }
+}
 
 
 static int codificar(Arbol T, char* entrada, char* salida) {
 
-    FILE* in = NULL;
-    BitStream out = NULL;
+    FILE* in = fopen(entrada, "r");
+    if (in == NULL) { printf("error al abrir el archivo\n"); return -1; }
+
+    BitStream out = OpenBitStream(salida, "w");
+    if (out == NULL) { printf("error en bitstream\n"); fclose(in); return -1; }
 
     /* Dado el arbol crear una tabla que contiene la
        secuencia de bits para cada caracter.
@@ -376,8 +390,6 @@ static int codificar(Arbol T, char* entrada, char* salida) {
 
     /* Inicializar tabla de campo de bits a cero */
     memset(tabla, 0, NUM_CHARS*sizeof(struct _campobits));
-    
-
     
     /* Abrir archivos */
     /* TU IMPLEMENTACION VA AQUI .. */
@@ -400,9 +412,11 @@ static int codificar(Arbol T, char* entrada, char* salida) {
         Para escribir bits utiliza PutBits() de bitstream.h
         Para escribir bytes utiliza PutByte() de bitstream.h
     */
-    
+    campobits bitsActuales = { 0, 0 };
+    crear_tabla(tabla, T, &bitsActuales);
 
-
+    // Escribir árbol de Huffman
+    escribir_arbol(out, T);
     /* Escribir el texto codificado al archivo*/
 
     /* 
@@ -427,16 +441,50 @@ static int codificar(Arbol T, char* entrada, char* salida) {
         Puedes colocarlo en una funcion si quieres
 
     */
+    
+    // Codificar archivo
+    int c;
+    while ((c = fgetc(in)) != EOF) {
+        campobits b = tabla[(unsigned char)c];
+        for (int i = 0; i < b.tamano; i++) {
+            int bit = bits_leer(&b, i);
+            PutBit(out, bit);
+        }
+    }
 
     /* No te olvides de limpiar */
     if (in)
         fclose(in);
     if (out)
         CloseBitStream(out);
-       
+
     return 0;
 }
-             
+
+static void crear_tabla(campobits* tabla, Arbol T, campobits* bitsActuales) {
+    if (arbol_izq(T) == NULL && arbol_der(T) == NULL) {
+        keyvaluepair* kv = (keyvaluepair*)arbol_valor(T);
+        tabla[(unsigned char)kv->c] = *bitsActuales;
+        return;
+    }
+
+    // Ir a la izquierda: agregar 0
+    if (arbol_izq(T)) {
+        campobits copia = *bitsActuales;
+        bits_agregar(&copia, 0);
+        printf("%d", bits_leer(&copia, copia.tamano - 1)); // Debug: imprimir el bit que se va a agregar
+        crear_tabla(tabla, arbol_izq(T), &copia);
+    }
+
+    // Ir a la derecha: agregar 1
+    if (arbol_der(T)) {
+        campobits copia = *bitsActuales;
+        bits_agregar(&copia, 1);
+        printf("%d", bits_leer(&copia, copia.tamano - 1)); // Debug: imprimir el bit que se va a agregar
+        crear_tabla(tabla, arbol_der(T), &copia);
+    }
+}
+
 
 /* Esto se utiliza como parte de la descompresion (ver descomprimir())..
    
