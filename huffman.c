@@ -504,9 +504,38 @@ static void crear_tabla(campobits* tabla, Arbol T, campobits* bitsActuales) {
 static Arbol leer_arbol(BitStream bs) {
   
     /* TU IMPLEMENTACION AQUI */
+    int bit = GetBit(bs); // lee el bit actual
 
-    return NULL;
+    if (bit == 1) {
+        // Es hoja, entonces leer el carácter asociado
+        unsigned char caracter = GetByte(bs);
+        keyvaluepair* kv = malloc(sizeof(keyvaluepair));
+        if (!kv) {
+            perror("Error al asignar memoria para keyvaluepair");
+            exit(1);
+        }
+        kv->c = caracter;
+        kv->frec = 0;  // La frecuencia no es necesaria para la descompresión
+        return arbol_crear(kv); // crear nodo hoja
+    }
+    else {
+        // Es nodo interno, crear nodo y leer recursivamente
+        Arbol izq = leer_arbol(bs);
+        Arbol der = leer_arbol(bs);
 
+        keyvaluepair* kv = malloc(sizeof(keyvaluepair));
+        if (!kv) {
+            perror("Error al asignar memoria para keyvaluepair");
+            exit(1);
+        }
+        kv->c = '\0'; // Nodo interno no tiene carácter
+        kv->frec = 0;
+
+        Arbol nodo = arbol_crear(kv); // los nodos internos no tienen valor
+        arbol_agregarIzq(nodo, izq);
+        arbol_agregarDer(nodo, der);
+        return nodo;
+    }
 }
 
 /* Esto se utiliza como parte de la descompresion (ver descomprimir())..
@@ -521,6 +550,28 @@ static Arbol leer_arbol(BitStream bs) {
 static void decodificar(BitStream in, BitStream out, Arbol arbol) {
   
     /* TU IMPLEMENTACION AQUI */
+    Arbol actual = arbol;
+    int bit;
+
+    while (!IsEmptyBitStream(in))
+    {
+        bit = GetBit(in);
+        if(bit == 0) {
+			// Ir a la izquierda
+			actual = arbol_izq(actual);
+		}
+		else {                      
+			// Ir a la derecha
+			actual = arbol_der(actual);
+		}
+
+        //Cuando llegamos a la hoja, escribir byte
+        if(arbol_izq(actual) == NULL && arbol_der(actual) == NULL) {
+			keyvaluepair* kvp = (keyvaluepair*)arbol_valor(actual);
+			PutByte(out, kvp->c);
+			actual = arbol;                     // volver a la raiz
+		}
+    }
 }
 
 
